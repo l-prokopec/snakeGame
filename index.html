@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Neon Snake</title>
+<style>
+  :root{
+    --bg1:#0e0f1a; --bg2:#171a2b; --bg3:#0b0f18;
+    --neon1:#00ffe1; --neon2:#6cff4d; --neon3:#ff6ad5; --neon4:#ffd166; --red:#ff5c5c;
+    --panel:rgba(255,255,255,.08); --panel-brd:rgba(255,255,255,.18);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#fff; background: radial-gradient(1200px 800px at 80% 10%, #1b2240 0%, transparent 60%),
+                                   radial-gradient(900px 700px at 20% 90%, #15233a 0%, transparent 60%),
+                                   linear-gradient(135deg,var(--bg1),var(--bg2) 40%,var(--bg3));}
+  /* jemný „scanline“ + šum pro game feel */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;mix-blend-mode:screen;opacity:.08;
+    background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 2px),
+                      radial-gradient(1200px 1200px at -10% -10%, rgba(255,255,255,.05), transparent 50%),
+                      radial-gradient(1200px 1200px at 110% 110%, rgba(255,255,255,.05), transparent 50%);
+  }
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100%;padding:24px}
+  h1{margin:0 0 4px;font-weight:800;letter-spacing:.5px;
+     text-shadow:0 0 10px rgba(0,255,200,.6),0 2px 24px rgba(0,0,0,.6);}
+  .sub{opacity:.8;margin-bottom:6px}
+
+  .hud{
+    display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--panel-brd);border-radius:16px;padding:10px 14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04), 0 0 32px rgba(0,255,200,.08);
+    backdrop-filter: blur(8px);
+  }
+  .badge{
+    display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;font-weight:600;
+    background:linear-gradient(135deg, rgba(0,255,225,.10), rgba(108,255,77,.10));
+    border:1px solid rgba(255,255,255,.15);
+    box-shadow:inset 0 0 12px rgba(0,255,200,.15);
+  }
+  .dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 12px currentColor;}
+  .dot.score{background:var(--neon2);color:var(--neon2)}
+  .dot.best{background:var(--neon1);color:var(--neon1)}
+  .btn{
+    cursor:pointer;border:none;border-radius:12px;padding:8px 12px;font-weight:700;letter-spacing:.2px;
+    background:linear-gradient(135deg,var(--neon1),var(--neon2)); color:#081014;
+    box-shadow:0 10px 30px rgba(0,255,200,.25), 0 0 30px rgba(0,255,225,.25);
+    transition: transform .12s ease, box-shadow .2s ease, filter .2s ease;
+  }
+  .btn:hover{transform:translateY(-1px);filter:saturate(1.15)}
+  .btn.ghost{
+    background:transparent;color:#e5fefc;border:1px solid var(--panel-brd);
+    box-shadow:none;
+  }
+
+  .stage-wrap{
+    position:relative; border-radius:20px; padding:14px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.05);
+  }
+  canvas{
+    display:block;background: #0b0f18; border-radius:16px; width:min(92vw,560px); height:auto;
+    box-shadow: inset 0 0 70px rgba(0,255,225,.06), inset 0 0 140px rgba(108,255,77,.05), 0 0 0 10px rgba(0,0,0,.2);
+    image-rendering: crisp-edges; image-rendering: pixelated;
+  }
+  /* neon rám okolo plátna */
+  .glow{
+    position:absolute; inset:14px; border-radius:16px; pointer-events:none; filter: blur(18px); opacity:.6;
+    background:
+      radial-gradient(600px 220px at 20% 10%, rgba(0,255,225,.17), transparent 60%),
+      radial-gradient(600px 220px at 80% 90%, rgba(108,255,77,.14), transparent 60%),
+      radial-gradient(900px 260px at 50% 50%, rgba(255,106,213,.10), transparent 70%);
+  }
+
+  /* Overlay pro start/prohru */
+  .overlay{
+    position:absolute; inset:14px; display:flex; align-items:center; justify-content:center;
+    border-radius:16px; background:rgba(5,10,16,.62); backdrop-filter: blur(8px);
+    border:1px solid rgba(255,255,255,.1); text-align:center; padding:20px; gap:12px; flex-direction:column;
+  }
+  .overlay h2{margin:0;font-size:34px;letter-spacing:.4px;text-shadow:0 6px 30px rgba(0,255,225,.35)}
+  .overlay p{opacity:.9;margin:0 0 4px}
+  .overlay .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+  /* mobilní šipky */
+  .dpad{
+    display:none; position: fixed; bottom:20px; right:20px; gap:10px; flex-direction:column; align-items:center;
+    z-index:10;
+  }
+  .drow{display:flex;gap:10px}
+  .dkey{
+    width:54px;height:54px;border-radius:14px;border:1px solid var(--panel-brd);background:var(--panel);
+    display:flex;align-items:center;justify-content:center;font-weight:800;backdrop-filter: blur(6px);
+    box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04);
+    user-select:none; -webkit-tap-highlight-color: transparent;
+  }
+  @media (max-width: 768px){ .dpad{display:flex} }
+
+  .muted{opacity:.7}
+  .hint{opacity:.7;font-size:12px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🌀 Neon Snake</h1>
+    <div class="sub">Plynulé neonové animace, částice a hezky „křupe“ do uší.</div>
+
+    <div class="hud">
+      <div class="badge"><span class="dot score"></span>Skóre: <span id="score">0</span></div>
+      <div class="badge"><span class="dot best"></span>Nejlepší: <span id="best">0</span></div>
+      <button id="toggleSound" class="btn">🔊 Zvuk</button>
+      <button id="pauseBtn" class="btn ghost">⏸ Pauza (P)</button>
+      <button id="restartBtn" class="btn ghost">↻ Restart (R)</button>
+    </div>
+
+    <div class="stage-wrap">
+      <div class="glow"></div>
+      <canvas id="game" width="560" height="560" aria-label="Hrací plocha"></canvas>
+
+      <!-- START overlay -->
+      <div class="overlay" id="startOverlay">
+        <h2>Připravit, pozor… 🐍</h2>
+        <p>Šipky / W A S D • Mobil: šipky nebo gesto • Pauza: P</p>
+        <div class="actions">
+          <button id="startBtn" class="btn">Začít hrát</button>
+        </div>
+        <div class="hint muted">Tip: zkus držet „flow“, odměníme tě pulzy a částicemi ✨</div>
+      </div>
+
+      <!-- GAME OVER overlay -->
+      <div class="overlay" id="gameOverOverlay" style="display:none">
+        <h2>Game Over 💥</h2>
+        <p>Skóre: <b id="finalScore">0</b> • Nejlepší: <b id="finalBest">0</b></p>
+        <div class="actions">
+          <button id="againBtn" class="btn">Hrát znovu</button>
+          <button id="closeBtn" class="btn ghost">Zavřít</button>
+        </div>
+        <div class="hint muted">Zkus plynulejší tahy – had miluje rytmus.</div>
+      </div>
+    </div>
+
+    <div class="hint">© Udělané pro radost – žádné frameworky, jen čisté Canvas API.</div>
+  </div>
+
+  <!-- Mobilní D-Pad -->
+  <div class="dpad" id="dpad">
+    <div class="drow"><div></div><div class="dkey" data-dir="up">▲</div><div></div></div>
+    <div class="drow"><div class="dkey" data-dir="left">◀</div><div class="dkey" data-dir="down">▼</div><div class="dkey" data-dir="right">▶</div></div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('score');
+  const bestEl  = document.getElementById('best');
+  const startOverlay = document.getElementById('startOverlay');
+  const gameOverOverlay = document.getElementById('gameOverOverlay');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalBestEl = document.getElementById('finalBest');
+  const startBtn = document.getElementById('startBtn');
+  const againBtn = document.getElementById('againBtn');
+  const closeBtn = document.getElementById('closeBtn');
+  const pauseBtn = document.getElementById('pauseBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const toggleSoundBtn = document.getElementById('toggleSound');
+
+  // --- Nastavení hry ---
+  const GRID = 28;                  // počet buněk na řádku/sloupci (560 / 28 = 20px buňka)
+  const SIZE = canvas.width / GRID; // velikost jedné buňky v px
+  const STEP_MS = 85;               // herní tick
+  const TWEEN = 0.38;               // vizuální posuv mezi ticky pro plynulejší dojem
+  const COLORS = ['#00ffe1','#6cff4d','#ffd166','#ff6ad5'];
+
+  let snake, dir, nextDir, food, score, best, particles, pulse, playing, paused, lastTick, accMs;
+
+  // --- Zvuk (WebAudio) ---
+  let audioCtx = null, soundOn = true;
+  function beep(freq=980, dur=0.06, type='sine', gain=0.05){
+    if(!soundOn) return;
+    if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.value = gain; o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur);
+  }
+
+  // --- Utils ---
+  const randInt = n => Math.floor(Math.random()*n);
+  function randomFood(){
+    let f;
+    do { f = {x: randInt(GRID), y: randInt(GRID)}; }
+    while (snake.some(s => s.x===f.x && s.y===f.y));
+    return f;
+  }
+  function setBest(val){ best = Math.max(best||0, val); localStorage.setItem('neon-snake-best', best); bestEl.textContent = best; }
+
+  // Částice pro „eat“ efekt
+  function spawnParticles(x,y,color){
+    for(let i=0;i<18;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = 1.2 + Math.random()*2.2;
+      particles.push({
+        x:x+0.5, y:y+0.5, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp,
+        life: 420+Math.random()*200, color
+      });
+    }
+  }
+
+  function resetGame(){
+    snake = [{x: Math.floor(GRID/2), y: Math.floor(GRID/2)}];
+    dir = {x:0,y:0};
+    nextDir = {x:0,y:0};
+    food = randomFood();
+    score = 0; scoreEl.textContent = score;
+    particles = []; pulse = 0; playing = false; paused = false;
+    lastTick = 0; accMs = 0;
+  }
+
+  function startGame(){
+    playing = true; paused = false; startOverlay.style.display='none'; gameOverOverlay.style.display='none';
+    // rozjet směrem doprava, aby to nepůsobilo „mrtvě“
+    if(dir.x===0 && dir.y===0){ nextDir = {x:1,y:0}; }
+    beep(600,0.05,'triangle',0.04);
+  }
+
+  function gameOver(){
+    playing = false;
+    setBest(score);
+    finalScoreEl.textContent = score;
+    finalBestEl.textContent = best;
+    gameOverOverlay.style.display='flex';
+    // krátká melodie 💥
+    beep(220,0.08,'square',0.04); setTimeout(()=>beep(160,0.08,'square',0.04),100);
+  }
+
+  function tick(){
+    // aktualizace směru
+    if ( (nextDir.x!==-dir.x || snake.length===1) && (nextDir.y!==-dir.y || snake.length===1) ) {
+      dir = nextDir;
+    }
+    // posun
+    const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+    snake.unshift(head);
+
+    // jídlo
+    if(head.x===food.x && head.y===food.y){
+      score++; scoreEl.textContent = score;
+      setBest(score);
+      spawnParticles(head.x, head.y, COLORS[(score)%COLORS.length]);
+      pulse = 1;
+      beep(880,0.05,'sine',0.06);
+      food = randomFood();
+    } else {
+      snake.pop();
+    }
+
+    // kolize
+    if(head.x<0||head.y<0||head.x>=GRID||head.y>=GRID) return gameOver();
+    for(let i=1;i<snake.length;i++){ if(snake[i].x===head.x && snake[i].y===head.y) return gameOver(); }
+  }
+
+  // kreslení s „tween“ posunem pro plynulost
+  function draw(alpha){
+    // pozadí grid s jemným neonem
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#0b0f18';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.globalAlpha = .9;
+    for(let i=0;i<=GRID;i++){
+      const g = ctx.createLinearGradient(0,i*SIZE,canvas.width,i*SIZE);
+      g.addColorStop(0,'rgba(0,255,225,.02)');
+      g.addColorStop(1,'rgba(108,255,77,.02)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0,i*SIZE,canvas.width,1);
+      ctx.fillRect(i*SIZE,0,1,canvas.height);
+    }
+    ctx.globalAlpha = 1;
+
+    // jídlo – dýchající kruh
+    const r = SIZE*0.42 + Math.sin(Date.now()/220)*2;
+    const fx = food.x*SIZE + SIZE/2, fy = food.y*SIZE + SIZE/2;
+    const fg = ctx.createRadialGradient(fx,fy,2,fx,fy,r+10);
+    fg.addColorStop(0, COLORS[(score+1)%COLORS.length]);
+    fg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = fg;
+    ctx.beginPath(); ctx.arc(fx,fy,r,0,Math.PI*2); ctx.fill();
+
+    // had – segmenty s gradientem, „glow“ na hlavě
+    const segColorA = COLORS[(score)%COLORS.length];
+    const segColorB = COLORS[(score+2)%COLORS.length];
+
+    for(let i=snake.length-1;i>=0;i--){
+      const s = snake[i];
+      const px = s.x*SIZE, py = s.y*SIZE;
+
+      // malý vizuální tween u hlavy (jen vodítko – logika zůstává gridová)
+      let offx=0, offy=0;
+      if(i===0){ offx = dir.x*SIZE*TWEEN*alpha; offy = dir.y*SIZE*TWEEN*alpha; }
+
+      const grd = ctx.createLinearGradient(px,py,px+SIZE,py+SIZE);
+      grd.addColorStop(0, segColorA);
+      grd.addColorStop(1, segColorB);
+      ctx.fillStyle = grd;
+
+      const radius = 8;
+      roundRect(ctx, px+2+offx, py+2+offy, SIZE-4, SIZE-4, radius);
+      ctx.fill();
+
+      // jemné orámování
+      ctx.strokeStyle = 'rgba(255,255,255,.12)';
+      ctx.lineWidth = 1; ctx.stroke();
+
+      if(i===0){
+        // glow hlavy
+        ctx.save();
+        ctx.shadowColor = segColorA;
+        ctx.shadowBlur = 18;
+        ctx.globalAlpha = .8;
+        roundRect(ctx, px+2+offx, py+2+offy, SIZE-4, SIZE-4, radius);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // částice
+    for(let p of particles){
+      p.x += p.vx * 0.02 * (p.life>200?1.8:1.2);
+      p.y += p.vy * 0.02 * (p.life>200?1.8:1.2);
+      p.life -= 16;
+      const px = p.x*SIZE, py = p.y*SIZE;
+      ctx.globalAlpha = Math.max(0, Math.min(1, p.life/420));
+      ctx.fillStyle = p.color;
+      roundRect(ctx, px-2, py-2, 4, 4, 2);
+      ctx.fill();
+    }
+    particles = particles.filter(p=>p.life>0);
+    ctx.globalAlpha = 1;
+
+    // pulz hrací plochy při snězení
+    if(pulse>0){
+      ctx.save();
+      ctx.globalAlpha = pulse*0.25;
+      ctx.strokeStyle = segColorA; ctx.lineWidth = 6;
+      roundedRectStroke(ctx, 3,3, canvas.width-6, canvas.height-6, 14);
+      ctx.restore();
+      pulse = Math.max(0, pulse - 0.08);
+    }
+  }
+
+  function roundRect(c,x,y,w,h,r){
+    c.beginPath();
+    c.moveTo(x+r,y);
+    c.arcTo(x+w,y,x+w,y+h,r);
+    c.arcTo(x+w,y+h,x,y+h,r);
+    c.arcTo(x,y+h,x,y,r);
+    c.arcTo(x,y,x+w,y,r);
+    c.closePath();
+  }
+  function roundedRectStroke(c,x,y,w,h,r){ roundRect(c,x,y,w,h,r); c.stroke(); }
+
+  // hlavní smyčka (časovač + interpolace vykreslení)
+  function loop(ts){
+    if(!lastTick) lastTick = ts;
+    const dt = ts - lastTick;
+    lastTick = ts;
+
+    if(playing && !paused){
+      accMs += dt;
+      while(accMs >= STEP_MS){
+        accMs -= STEP_MS;
+        tick();
+        if(!playing) break;
+      }
+    }
+    const alpha = Math.min(1, accMs/STEP_MS);
+    draw(alpha);
+    requestAnimationFrame(loop);
+  }
+
+  // --- Ovládání ---
+  function setDir(nx,ny){
+    // zamezíme otočení o 180°
+    if(snake.length>1 && nx===-dir.x && ny===-dir.y) return;
+    nextDir = {x:nx,y:ny};
+  }
+  window.addEventListener('keydown', (e)=>{
+    const k = e.key.toLowerCase();
+    if(k==='arrowup'||k==='w') setDir(0,-1);
+    else if(k==='arrowdown'||k==='s') setDir(0,1);
+    else if(k==='arrowleft'||k==='a') setDir(-1,0);
+    else if(k==='arrowright'||k==='d') setDir(1,0);
+    else if(k==='p'){ paused = !paused; pauseBtn.textContent = paused? '▶ Pokračovat (P)' : '⏸ Pauza (P)'; }
+    else if(k===' ' && !playing){ startGame(); }
+    else if(k==='r'){ resetGame(); startGame(); }
+  });
+
+  // mobilní d-pad
+  document.querySelectorAll('.dkey').forEach(btn=>{
+    btn.addEventListener('touchstart', e=>{
+      const d = btn.dataset.dir;
+      if(d==='up') setDir(0,-1);
+      if(d==='down') setDir(0,1);
+      if(d==='left') setDir(-1,0);
+      if(d==='right') setDir(1,0);
+    }, {passive:true});
+  });
+  // swipe
+  let touchStart=null;
+  canvas.addEventListener('touchstart', e=>{ touchStart = [...e.touches][0]; }, {passive:true});
+  canvas.addEventListener('touchmove', e=>{
+    if(!touchStart) return;
+    const t = [...e.touches][0];
+    const dx = t.clientX - touchStart.clientX;
+    const dy = t.clientY - touchStart.clientY;
+    if(Math.abs(dx)+Math.abs(dy) > 24){
+      if(Math.abs(dx) > Math.abs(dy)) setDir(dx>0?1:-1,0);
+      else setDir(0, dy>0?1:-1);
+      touchStart = null;
+    }
+  }, {passive:true});
+
+  // UI tlačítka
+  startBtn.onclick = ()=>{ startGame(); };
+  againBtn.onclick = ()=>{ resetGame(); startGame(); };
+  closeBtn.onclick = ()=>{ gameOverOverlay.style.display='none'; };
+  pauseBtn.onclick = ()=>{ paused=!paused; pauseBtn.textContent = paused? '▶ Pokračovat (P)' : '⏸ Pauza (P)'; };
+  restartBtn.onclick = ()=>{ resetGame(); startGame(); };
+  toggleSoundBtn.onclick = ()=>{
+    soundOn = !soundOn;
+    toggleSoundBtn.textContent = soundOn ? '🔊 Zvuk' : '🔇 Bez zvuku';
+  };
+
+  // inicializace
+  best = Number(localStorage.getItem('neon-snake-best')||0);
+  bestEl.textContent = best;
+  resetGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
