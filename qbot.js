@@ -392,19 +392,22 @@ class SnakeQLearner {
 
     if (this.mode === 'train') {
       this.episodeScores.push(episodeScore);
+      const windowSize = 10;
       this.scoreWindow.push(episodeScore);
-      if (this.scoreWindow.length > 10) {
+      if (this.scoreWindow.length > windowSize) {
         this.scoreWindow.shift();
       }
-      if (this.scoreWindow.length === 10) {
-        const avg = this.scoreWindow.reduce((sum, val) => sum + val, 0) / 10;
+      if (this.completedEpisodes % windowSize === 0) {
+        const avg = this.scoreWindow.reduce((sum, val) => sum + val, 0) / this.scoreWindow.length;
         let deltaPct = null;
         if (this.lastWindowAverage != null && this.lastWindowAverage !== 0) {
           deltaPct = ((avg - this.lastWindowAverage) / Math.abs(this.lastWindowAverage)) * 100;
         }
         const formattedAvg = avg.toFixed(2);
         const formattedDelta = deltaPct == null ? '' : ` (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)`;
-        console.info(`[snakeQ] Episodes ${this.completedEpisodes - 9}-${this.completedEpisodes}: ${formattedAvg}${formattedDelta}`);
+        const start = this.completedEpisodes - windowSize + 1;
+        const end = this.completedEpisodes;
+        console.info(`[snakeQ] Episodes ${start}-${end}: ${formattedAvg}${formattedDelta}`);
         this.lastWindowAverage = avg;
       }
     }
