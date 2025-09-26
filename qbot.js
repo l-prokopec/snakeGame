@@ -6,10 +6,18 @@ const DIRS = [
 ];
 
 const TURN_ACTIONS = [-1, 0, 1];
-const STEP_PENALTY = -0.01;
+const STEP_PENALTY_PLAY = -0.01;
+const STEP_PENALTY_TRAIN = -0.02;
 const FOOD_REWARD = 1.0;
 const DEATH_PENALTY = -1.0;
 const DIST_SHAPING = 0.003;
+const STALL_PENALTY_DEFAULT = -0.2;
+const NO_PROGRESS_LIMIT_DEFAULT = 280;
+const EPSILON_DECAY_DEFAULT = 0.995;
+const EPSILON_MIN_DEFAULT = 0.02;
+const ALPHA_DEFAULT = 0.3;
+const ALPHA_TRAIN_DEFAULT = 0.35;
+const ALPHA_DECAY_DEFAULT = 0.999;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -20,7 +28,7 @@ const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 class QAgent {
   constructor() {
     this.table = new Map();
-    this.alpha = 0.3;
+    this.alpha = ALPHA_DEFAULT;
     this.gamma = 0.9;
     this.epsilon = 0.25;
     this.load();
@@ -117,14 +125,16 @@ class SnakeQLearner {
     this.prevState = null;
     this.prevActionIndex = null;
     this.prevScore = this.getScore();
-    this.prevDistance = null;
-    this.lastHeadKey = null;
-    this.currentDir = { dx: 1, dy: 0 };
+    this.resetEpisodeStats();
+    this.noProgressLimit = NO_PROGRESS_LIMIT_DEFAULT;
+    this.stallPenalty = STALL_PENALTY_DEFAULT;
+    this.alphaDecay = ALPHA_DECAY_DEFAULT;
+    this.stepPenalty = STEP_PENALTY_PLAY;
 
     this.completedEpisodes = 0;
     this.targetEpisodes = 0;
-    this.epsilonMin = 0.02;
-    this.epsilonDecay = 0.995;
+    this.epsilonMin = EPSILON_MIN_DEFAULT;
+    this.epsilonDecay = EPSILON_DECAY_DEFAULT;
 
     this.loop = this.loop.bind(this);
     this.ensureGameHandlers();
@@ -170,9 +180,7 @@ class SnakeQLearner {
     this.prevState = null;
     this.prevActionIndex = null;
     this.prevScore = this.getScore();
-    this.prevDistance = null;
-    this.lastHeadKey = null;
-    this.currentDir = { dx: 1, dy: 0 };
+    this.resetEpisodeStats();
   }
 
   startLoop() {
@@ -185,13 +193,37 @@ class SnakeQLearner {
     this.running = false;
   }
 
-  async train({ episodes = 50, epsilon = 0.3, epsilonMin = 0.05, epsilonDecay = 0.995 } = {}) {
+  resetEpisodeStats() {
+    this.prevDistance = null;
+    this.lastHeadKey = null;
+    this.currentDir = { dx: 1, dy: 0 };
+    this.noProgressSteps = 0;
+    this.bestDistance = Infinity;
+  }
+
+  async train({
+    episodes = 50,
+    epsilon = 0.3,
+    epsilonMin = EPSILON_MIN_DEFAULT,
+    epsilonDecay = EPSILON_DECAY_DEFAULT,
+    alpha = ALPHA_TRAIN_DEFAULT,
+    alphaDecay = ALPHA_DECAY_DEFAULT,
+    stepPenalty = STEP_PENALTY_TRAIN,
+    noProgressLimit = NO_PROGRESS_LIMIT_DEFAULT,
+    stallPenalty = STALL_PENALTY_DEFAULT
+  } = {}) {
     this.mode = 'train';
     this.targetEpisodes = episodes;
     this.completedEpisodes = 0;
     this.agent.epsilon = epsilon;
     this.epsilonMin = epsilonMin;
     this.epsilonDecay = epsilonDecay;
+    this.agent.alpha = alpha;
+    this.alphaDecay = alphaDecay;
+    this.stepPenalty = stepPenalty;
+    this.noProgressLimit = noProgressLimit;
+    this.stallPenalty = stallPenalty;
+    this.resetEpisodeStats();
     await this.resetGame();
     this.startLoop();
     return new Promise((resolve) => {
@@ -209,12 +241,17 @@ class SnakeQLearner {
   async play({ epsilon = 0.02 } = {}) {
     this.mode = 'play';
     this.agent.epsilon = epsilon;
+    this.stepPenalty = STEP_PENALTY_PLAY;
+    this.noProgressLimit = Infinity;
+    this.stallPenalty = 0;
+    this.alphaDecay = 1;
     await this.resetGame();
     this.startLoop();
   }
 
   stop() {
     this.mode = 'idle';
+    this.stepPenalty = STEP_PENALTY_PLAY;
     this.stopLoop();
   }
 
@@ -241,6 +278,19 @@ class SnakeQLearner {
 
     const observation = this.observe();
     if (!observation) return;
+
+    if (this.mode === 'train' && observation.foodDistance != null) {
+      if (observation.foodDistance < this.bestDistance) {
+        this.bestDistance = observation.foodDistance;
+        this.noProgressSteps = 0;
+      } else {
+        this.noProgressSteps += 1;
+      }
+      if (this.noProgressSteps > this.noProgressLimit) {
+        this.endEpisode(this.stallPenalty);
+        return;
+      }
+    }
 
     const headKey = coordKey(observation.head);
     const headMoved = headKey !== this.lastHeadKey;
@@ -278,7 +328,7 @@ class SnakeQLearner {
   }
 
   computeReward(observation, gameOver) {
-    let reward = STEP_PENALTY;
+    let reward = this.stepPenalty;
     const scoreDiff = observation.score - this.prevScore;
     if (scoreDiff > 0) {
       reward += FOOD_REWARD * scoreDiff;
@@ -316,14 +366,21 @@ class SnakeQLearner {
   }
 
   handleEpisodeEnd() {
+    this.endEpisode(DEATH_PENALTY);
+  }
+
+  endEpisode(terminalReward = DEATH_PENALTY) {
     if (this.prevState && this.prevActionIndex !== null) {
-      this.agent.update(this.prevState, this.prevActionIndex, DEATH_PENALTY, null, true);
+      this.agent.update(this.prevState, this.prevActionIndex, terminalReward, null, true);
     }
     this.prevState = null;
     this.prevActionIndex = null;
     this.prevObservation = null;
     this.prevDistance = null;
     this.lastHeadKey = null;
+    this.noProgressSteps = 0;
+    this.bestDistance = Infinity;
+
     this.completedEpisodes += 1;
     if (this.mode === 'train') {
       if (this.completedEpisodes >= this.targetEpisodes) {
@@ -331,6 +388,9 @@ class SnakeQLearner {
         this.stop();
       } else {
         this.agent.decayEpsilon(this.epsilonMin, this.epsilonDecay);
+        if (this.alphaDecay && this.alphaDecay !== 1) {
+          this.agent.alpha = Math.max(0.05, this.agent.alpha * this.alphaDecay);
+        }
         this.resetGame();
       }
     } else {
