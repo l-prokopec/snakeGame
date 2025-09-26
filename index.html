@@ -311,6 +311,11 @@
 
   function updateCanvasSize(){
     if(!wrapEl || !stageWrapEl) return;
+    const isFullscreen = document.body.classList.contains('fullscreen');
+    if(!isFullscreen){
+      stageWrapEl.style.removeProperty('--canvas-size');
+      return;
+    }
     const wrapStyles = getComputedStyle(wrapEl);
     const paddingV = parseFloat(wrapStyles.paddingTop) + parseFloat(wrapStyles.paddingBottom);
     const paddingH = parseFloat(wrapStyles.paddingLeft) + parseFloat(wrapStyles.paddingRight);
