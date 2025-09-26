@@ -286,6 +286,13 @@ class SnakeQLearner {
     const observation = this.observe();
     if (!observation) return;
 
+    const previousScore = this.prevObservation ? this.prevObservation.score : (this.prevScore ?? 0);
+
+    if (this.mode === 'train' && observation.score > previousScore) {
+      this.bestDistance = observation.foodDistance ?? Infinity;
+      this.noProgressSteps = 0;
+    }
+
     if (this.mode === 'train' && observation.foodDistance != null) {
       if (observation.foodDistance < this.bestDistance) {
         this.bestDistance = observation.foodDistance;
@@ -332,6 +339,7 @@ class SnakeQLearner {
 
     this.prevObservation = observation;
     this.lastHeadKey = headKey;
+    this.currentEpisodeScore = observation.score;
   }
 
   computeReward(observation, gameOver) {
