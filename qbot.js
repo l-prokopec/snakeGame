@@ -644,5 +644,8 @@ function installQLearner() {
 }
 
 const snakeQ = installQLearner();
+if (typeof window !== 'undefined') {
+  window.snakeQ = snakeQ;
+}
 
 export { snakeQ };
