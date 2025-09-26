@@ -59,6 +59,7 @@
   .stage-wrap{
     position:relative; border-radius:20px; padding:14px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
     box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.05);
+    margin:14px 0;
   }
   canvas{
     display:block;background: #0b0f18; border-radius:16px; width:min(92vw,560px); height:auto;
@@ -102,7 +103,11 @@
     box-shadow: 0 10px 24px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04);
     user-select:none; -webkit-tap-highlight-color: transparent;
   }
-  @media (max-width: 768px){ .dpad{display:flex} }
+  @media (max-width: 768px){
+    .dpad{display:flex}
+    body.playing .stage-wrap{margin:auto 0;}
+    body.playing .wrap > .hint{margin-top:auto;}
+  }
 
   .muted{opacity:.7}
   .hint{opacity:.7;font-size:12px}
@@ -258,12 +263,14 @@
     particles = []; trail = []; pulse = 0; playing = false; paused = false;
     lastTick = 0; accMs = 0;
     pauseBtn.textContent = '⏸ Pauza (P)';
+    document.body.classList.remove('playing');
     startOverlay.classList.add('active');
     gameOverOverlay.classList.remove('active');
   }
 
   function startGame(){
     playing = true; paused = false;
+    document.body.classList.add('playing');
     startOverlay.classList.remove('active');
     gameOverOverlay.classList.remove('active');
     // rozjet směrem doprava, aby to nepůsobilo „mrtvě“
