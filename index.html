@@ -2,7 +2,7 @@
 <html lang="cs">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>Neon Snake</title>
 <style>
   :root{
@@ -11,7 +11,7 @@
     --panel:rgba(255,255,255,.08); --panel-brd:rgba(255,255,255,.18);
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#fff; background: radial-gradient(1200px 800px at 80% 10%, #1b2240 0%, transparent 60%),
+  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#fff; background: radial-gradient(1200px 800px at 80% 10%, #1b2240 0%, transparent 60%),
                                    radial-gradient(900px 700px at 20% 90%, #15233a 0%, transparent 60%),
                                    linear-gradient(135deg,var(--bg1),var(--bg2) 40%,var(--bg3));}
   /* jemný „scanline“ + šum pro game feel */
@@ -22,7 +22,7 @@
                       radial-gradient(1200px 1200px at 110% 110%, rgba(255,255,255,.05), transparent 50%);
     animation: noiseDrift 18s ease-in-out infinite alternate;
   }
-  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100%;padding:24px}
+  .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100vh;min-height:100dvh;padding:24px}
   h1{margin:0 0 4px;font-weight:800;letter-spacing:.5px;
      text-shadow:0 0 10px rgba(0,255,200,.6),0 2px 24px rgba(0,0,0,.6);}
   .sub{opacity:.8;margin-bottom:6px}
@@ -64,6 +64,7 @@
     display:block;background: #0b0f18; border-radius:16px; width:min(92vw,560px); height:auto;
     box-shadow: inset 0 0 70px rgba(0,255,225,.06), inset 0 0 140px rgba(108,255,77,.05), 0 0 0 10px rgba(0,0,0,.2);
     image-rendering: crisp-edges; image-rendering: pixelated;
+    touch-action:none;
   }
   /* neon rám okolo plátna */
   .glow{
@@ -487,10 +488,15 @@
   });
   // swipe
   let touchStart=null;
-  canvas.addEventListener('touchstart', e=>{ touchStart = [...e.touches][0]; }, {passive:true});
+  canvas.addEventListener('touchstart', e=>{
+    if(!e.touches.length) return;
+    touchStart = e.touches[0];
+    e.preventDefault();
+  }, {passive:false});
   canvas.addEventListener('touchmove', e=>{
     if(!touchStart) return;
-    const t = [...e.touches][0];
+    const t = e.touches[0];
+    if(!t) return;
     const dx = t.clientX - touchStart.clientX;
     const dy = t.clientY - touchStart.clientY;
     if(Math.abs(dx)+Math.abs(dy) > 24){
@@ -498,7 +504,10 @@
       else setDir(0, dy>0?1:-1);
       touchStart = null;
     }
-  }, {passive:true});
+    e.preventDefault();
+  }, {passive:false});
+  canvas.addEventListener('touchend', ()=>{ touchStart = null; });
+  canvas.addEventListener('touchcancel', ()=>{ touchStart = null; });
 
   // UI tlačítka
   startBtn.onclick = ()=>{ startGame(); };
