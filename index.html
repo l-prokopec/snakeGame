@@ -20,6 +20,7 @@
     background-image: repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 1px, transparent 1px 2px),
                       radial-gradient(1200px 1200px at -10% -10%, rgba(255,255,255,.05), transparent 50%),
                       radial-gradient(1200px 1200px at 110% 110%, rgba(255,255,255,.05), transparent 50%);
+    animation: noiseDrift 18s ease-in-out infinite alternate;
   }
   .wrap{display:flex;flex-direction:column;align-items:center;gap:14px;min-height:100%;padding:24px}
   h1{margin:0 0 4px;font-weight:800;letter-spacing:.5px;
@@ -37,7 +38,9 @@
     background:linear-gradient(135deg, rgba(0,255,225,.10), rgba(108,255,77,.10));
     border:1px solid rgba(255,255,255,.15);
     box-shadow:inset 0 0 12px rgba(0,255,200,.15);
+    transition: transform .25s ease;
   }
+  .badge.bump{animation: badgePop .38s ease;}
   .dot{width:10px;height:10px;border-radius:50%;box-shadow:0 0 12px currentColor;}
   .dot.score{background:var(--neon2);color:var(--neon2)}
   .dot.best{background:var(--neon1);color:var(--neon1)}
@@ -69,6 +72,7 @@
       radial-gradient(600px 220px at 20% 10%, rgba(0,255,225,.17), transparent 60%),
       radial-gradient(600px 220px at 80% 90%, rgba(108,255,77,.14), transparent 60%),
       radial-gradient(900px 260px at 50% 50%, rgba(255,106,213,.10), transparent 70%);
+    animation: glowSweep 14s ease-in-out infinite;
   }
 
   /* Overlay pro start/prohru */
@@ -76,7 +80,11 @@
     position:absolute; inset:14px; display:flex; align-items:center; justify-content:center;
     border-radius:16px; background:rgba(5,10,16,.62); backdrop-filter: blur(8px);
     border:1px solid rgba(255,255,255,.1); text-align:center; padding:20px; gap:12px; flex-direction:column;
+    opacity:0; transform: translateY(8px) scale(.98);
+    pointer-events:none;
+    transition: opacity .35s ease, transform .35s ease;
   }
+  .overlay.active{opacity:1; transform:translateY(0) scale(1); pointer-events:auto;}
   .overlay h2{margin:0;font-size:34px;letter-spacing:.4px;text-shadow:0 6px 30px rgba(0,255,225,.35)}
   .overlay p{opacity:.9;margin:0 0 4px}
   .overlay .actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
@@ -97,6 +105,23 @@
 
   .muted{opacity:.7}
   .hint{opacity:.7;font-size:12px}
+
+  @keyframes noiseDrift{
+    0%{transform:translate3d(-4px,-6px,0);opacity:.07;}
+    50%{transform:translate3d(4px,6px,0);opacity:.1;}
+    100%{transform:translate3d(-2px,4px,0);opacity:.08;}
+  }
+  @keyframes glowSweep{
+    0%{opacity:.45;transform:scale(1) translate3d(-6px,-4px,0);}
+    50%{opacity:.75;transform:scale(1.04) translate3d(4px,6px,0);}
+    100%{opacity:.55;transform:scale(1.02) translate3d(-2px,2px,0);}
+  }
+  @keyframes badgePop{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.14);}
+    65%{transform:scale(.96);}
+    100%{transform:scale(1);}
+  }
 </style>
 </head>
 <body>
@@ -117,7 +142,7 @@
       <canvas id="game" width="560" height="560" aria-label="Hrací plocha"></canvas>
 
       <!-- START overlay -->
-      <div class="overlay" id="startOverlay">
+      <div class="overlay active" id="startOverlay">
         <h2>Připravit, pozor… 🐍</h2>
         <p>Šipky / W A S D • Mobil: šipky nebo gesto • Pauza: P</p>
         <div class="actions">
@@ -127,7 +152,7 @@
       </div>
 
       <!-- GAME OVER overlay -->
-      <div class="overlay" id="gameOverOverlay" style="display:none">
+      <div class="overlay" id="gameOverOverlay">
         <h2>Game Over 💥</h2>
         <p>Skóre: <b id="finalScore">0</b> • Nejlepší: <b id="finalBest">0</b></p>
         <div class="actions">
@@ -171,7 +196,7 @@
   const TWEEN = 0.38;               // vizuální posuv mezi ticky pro plynulejší dojem
   const COLORS = ['#00ffe1','#6cff4d','#ffd166','#ff6ad5'];
 
-  let snake, dir, nextDir, food, score, best, particles, pulse, playing, paused, lastTick, accMs;
+  let snake, dir, nextDir, food, score, best, particles, pulse, playing, paused, lastTick, accMs, trail;
 
   // --- Zvuk (WebAudio) ---
   let audioCtx = null, soundOn = true;
@@ -192,7 +217,24 @@
     while (snake.some(s => s.x===f.x && s.y===f.y));
     return f;
   }
-  function setBest(val){ best = Math.max(best||0, val); localStorage.setItem('neon-snake-best', best); bestEl.textContent = best; }
+  const scoreBadge = scoreEl.closest('.badge');
+  const bestBadge  = bestEl.closest('.badge');
+
+  function bumpBadge(el){
+    if(!el) return;
+    el.classList.remove('bump');
+    void el.offsetWidth;
+    el.classList.add('bump');
+  }
+
+  function setBest(val){
+    const nextBest = Math.max(best||0, val);
+    const changed = nextBest !== best;
+    best = nextBest;
+    localStorage.setItem('neon-snake-best', best);
+    bestEl.textContent = best;
+    if(changed) bumpBadge(bestBadge);
+  }
 
   // Částice pro „eat“ efekt
   function spawnParticles(x,y,color){
@@ -212,12 +254,17 @@
     nextDir = {x:0,y:0};
     food = randomFood();
     score = 0; scoreEl.textContent = score;
-    particles = []; pulse = 0; playing = false; paused = false;
+    particles = []; trail = []; pulse = 0; playing = false; paused = false;
     lastTick = 0; accMs = 0;
+    pauseBtn.textContent = '⏸ Pauza (P)';
+    startOverlay.classList.add('active');
+    gameOverOverlay.classList.remove('active');
   }
 
   function startGame(){
-    playing = true; paused = false; startOverlay.style.display='none'; gameOverOverlay.style.display='none';
+    playing = true; paused = false;
+    startOverlay.classList.remove('active');
+    gameOverOverlay.classList.remove('active');
     // rozjet směrem doprava, aby to nepůsobilo „mrtvě“
     if(dir.x===0 && dir.y===0){ nextDir = {x:1,y:0}; }
     beep(600,0.05,'triangle',0.04);
@@ -228,7 +275,7 @@
     setBest(score);
     finalScoreEl.textContent = score;
     finalBestEl.textContent = best;
-    gameOverOverlay.style.display='flex';
+    gameOverOverlay.classList.add('active');
     // krátká melodie 💥
     beep(220,0.08,'square',0.04); setTimeout(()=>beep(160,0.08,'square',0.04),100);
   }
@@ -244,7 +291,7 @@
 
     // jídlo
     if(head.x===food.x && head.y===food.y){
-      score++; scoreEl.textContent = score;
+      score++; scoreEl.textContent = score; bumpBadge(scoreBadge);
       setBest(score);
       spawnParticles(head.x, head.y, COLORS[(score)%COLORS.length]);
       pulse = 1;
@@ -252,6 +299,17 @@
       food = randomFood();
     } else {
       snake.pop();
+    }
+
+    if(dir.x!==0 || dir.y!==0){
+      trail.push({
+        x: head.x,
+        y: head.y,
+        dx: dir.x,
+        dy: dir.y,
+        life: 1,
+        color: COLORS[(score)%COLORS.length]
+      });
     }
 
     // kolize
@@ -284,6 +342,29 @@
     fg.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = fg;
     ctx.beginPath(); ctx.arc(fx,fy,r,0,Math.PI*2); ctx.fill();
+
+    // neonový ocásek
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for(let t of trail){
+      t.life -= 0.02;
+      const lerp = 1 - t.life;
+      const px = (t.x + 0.5 - t.dx*0.25*lerp)*SIZE;
+      const py = (t.y + 0.5 - t.dy*0.25*lerp)*SIZE;
+      const radius = SIZE*0.35 + lerp*SIZE*0.25;
+      const alpha = Math.max(0, t.life*0.6);
+      if(alpha<=0) continue;
+      ctx.globalAlpha = alpha;
+      const grad = ctx.createRadialGradient(px,py,2,px,py,radius*1.4);
+      grad.addColorStop(0, t.color);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(px,py,radius,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+    trail = trail.filter(t=>t.life>0);
 
     // had – segmenty s gradientem, „glow“ na hlavě
     const segColorA = COLORS[(score)%COLORS.length];
@@ -390,7 +471,7 @@
     else if(k==='arrowleft'||k==='a') setDir(-1,0);
     else if(k==='arrowright'||k==='d') setDir(1,0);
     else if(k==='p'){ paused = !paused; pauseBtn.textContent = paused? '▶ Pokračovat (P)' : '⏸ Pauza (P)'; }
-    else if(k===' ' && !playing){ startGame(); }
+    else if(k===' ' && !playing){ resetGame(); startGame(); }
     else if(k==='r'){ resetGame(); startGame(); }
   });
 
@@ -422,7 +503,7 @@
   // UI tlačítka
   startBtn.onclick = ()=>{ startGame(); };
   againBtn.onclick = ()=>{ resetGame(); startGame(); };
-  closeBtn.onclick = ()=>{ gameOverOverlay.style.display='none'; };
+  closeBtn.onclick = ()=>{ resetGame(); };
   pauseBtn.onclick = ()=>{ paused=!paused; pauseBtn.textContent = paused? '▶ Pokračovat (P)' : '⏸ Pauza (P)'; };
   restartBtn.onclick = ()=>{ resetGame(); startGame(); };
   toggleSoundBtn.onclick = ()=>{
