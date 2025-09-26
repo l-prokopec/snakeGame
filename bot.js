@@ -156,6 +156,15 @@ class SnakeBot {
     this.lastBodyLength = state.body.length;
     this.updateCurrentDir(state);
 
+    if ((!this.plan || this.plan.length === 0) && this.shouldAvoidWall(state)) {
+      const preferredTurns = this.perpendicularDirs();
+      const emergencyTurn = this.chooseSafeDirection(state, preferredTurns);
+      if (emergencyTurn) {
+        this.plan = [emergencyTurn];
+        this.commandPending = false;
+      }
+    }
+
     if (this.expectedHead && sameCell(state.head, this.expectedHead)) {
       this.commandPending = false;
       this.prevHead = state.head;
@@ -216,6 +225,26 @@ class SnakeBot {
       const head = state.body[0];
       this.currentDir = { x: this.expectedHead.x - head.x, y: this.expectedHead.y - head.y };
     }
+  }
+
+  shouldAvoidWall(state) {
+    if (!this.currentDir) return false;
+    const next = {
+      x: state.head.x + this.currentDir.x,
+      y: state.head.y + this.currentDir.y
+    };
+    return !this.isInside(next);
+  }
+
+  perpendicularDirs() {
+    if (!this.currentDir) return DIRS;
+    if (this.currentDir.x !== 0) {
+      return DIRS.filter((dir) => dir.dx === 0);
+    }
+    if (this.currentDir.y !== 0) {
+      return DIRS.filter((dir) => dir.dy === 0);
+    }
+    return DIRS;
   }
 
   analyzeBoard() {
@@ -612,8 +641,27 @@ class SnakeBot {
     return pos.x >= 0 && pos.y >= 0 && pos.x < this.grid && pos.y < this.grid;
   }
 
-  chooseSafeDirection(state) {
+  chooseSafeDirection(state, preferred=[]) {
+    const seen = new Set();
+    const order = [];
+    for (const dir of preferred) {
+      if (!dir) continue;
+      const key = `${dir.dx},${dir.dy}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      order.push(dir);
+    }
     for (const dir of DIRS) {
+      const key = `${dir.dx},${dir.dy}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      order.push(dir);
+    }
+
+    for (const dir of order) {
+      if (this.lastBodyLength > 1 && this.currentDir && dir.dx === -this.currentDir.x && dir.dy === -this.currentDir.y) {
+        continue;
+      }
       const nx = state.head.x + dir.dx;
       const ny = state.head.y + dir.dy;
       if (!this.isInside({ x: nx, y: ny })) continue;
