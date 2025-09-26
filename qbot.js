@@ -130,6 +130,9 @@ class SnakeQLearner {
     this.stallPenalty = STALL_PENALTY_DEFAULT;
     this.alphaDecay = ALPHA_DECAY_DEFAULT;
     this.stepPenalty = STEP_PENALTY_PLAY;
+    this.episodeScores = [];
+    this.scoreWindow = [];
+    this.lastWindowAverage = null;
 
     this.completedEpisodes = 0;
     this.targetEpisodes = 0;
@@ -199,6 +202,7 @@ class SnakeQLearner {
     this.currentDir = { dx: 1, dy: 0 };
     this.noProgressSteps = 0;
     this.bestDistance = Infinity;
+    this.currentEpisodeScore = 0;
   }
 
   async train({
@@ -224,6 +228,9 @@ class SnakeQLearner {
     this.noProgressLimit = noProgressLimit;
     this.stallPenalty = stallPenalty;
     this.resetEpisodeStats();
+    this.episodeScores = [];
+    this.scoreWindow = [];
+    this.lastWindowAverage = null;
     await this.resetGame();
     this.startLoop();
     return new Promise((resolve) => {
@@ -373,6 +380,7 @@ class SnakeQLearner {
     if (this.prevState && this.prevActionIndex !== null) {
       this.agent.update(this.prevState, this.prevActionIndex, terminalReward, null, true);
     }
+    const episodeScore = this.prevObservation?.score ?? this.currentEpisodeScore ?? 0;
     this.prevState = null;
     this.prevActionIndex = null;
     this.prevObservation = null;
@@ -380,6 +388,26 @@ class SnakeQLearner {
     this.lastHeadKey = null;
     this.noProgressSteps = 0;
     this.bestDistance = Infinity;
+    this.currentEpisodeScore = 0;
+
+    if (this.mode === 'train') {
+      this.episodeScores.push(episodeScore);
+      this.scoreWindow.push(episodeScore);
+      if (this.scoreWindow.length > 10) {
+        this.scoreWindow.shift();
+      }
+      if (this.scoreWindow.length === 10) {
+        const avg = this.scoreWindow.reduce((sum, val) => sum + val, 0) / 10;
+        let deltaPct = null;
+        if (this.lastWindowAverage != null && this.lastWindowAverage !== 0) {
+          deltaPct = ((avg - this.lastWindowAverage) / Math.abs(this.lastWindowAverage)) * 100;
+        }
+        const formattedAvg = avg.toFixed(2);
+        const formattedDelta = deltaPct == null ? '' : ` (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)`;
+        console.info(`[snakeQ] Episodes ${this.completedEpisodes - 9}-${this.completedEpisodes}: ${formattedAvg}${formattedDelta}`);
+        this.lastWindowAverage = avg;
+      }
+    }
 
     this.completedEpisodes += 1;
     if (this.mode === 'train') {
