@@ -11,7 +11,7 @@
     --panel:rgba(255,255,255,.08); --panel-brd:rgba(255,255,255,.18);
   }
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;overflow:hidden;overscroll-behavior:none;touch-action:manipulation;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#fff; background: radial-gradient(1200px 800px at 80% 10%, #1b2240 0%, transparent 60%),
+  html,body{min-height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#fff; background: radial-gradient(1200px 800px at 80% 10%, #1b2240 0%, transparent 60%),
                                    radial-gradient(900px 700px at 20% 90%, #15233a 0%, transparent 60%),
                                    linear-gradient(135deg,var(--bg1),var(--bg2) 40%,var(--bg3));}
   /* jemný „scanline“ + šum pro game feel */
@@ -109,6 +109,54 @@
     body.playing .wrap > .hint{margin-top:auto;}
   }
 
+  body.fullscreen{
+    overflow:hidden;
+  }
+  body.fullscreen .wrap{
+    min-height:100dvh;
+    padding:16px 16px 90px;
+    justify-content:center;
+  }
+  body.fullscreen h1,
+  body.fullscreen .sub,
+  body.fullscreen .wrap > .hint{
+    display:none;
+  }
+  body.fullscreen .stage-wrap{
+    margin:0;
+  }
+  body.fullscreen .hud{
+    width:100%;
+    justify-content:center;
+    align-items:center;
+    flex-direction:column;
+    background:transparent;
+    box-shadow:none;
+    border:none;
+    padding:8px 0 12px;
+    gap:10px;
+  }
+  body.fullscreen .hud .badge[data-role="best"],
+  body.fullscreen .hud .btn:not(#fullscreenBtn){
+    display:none;
+  }
+  body.fullscreen #fullscreenBtn{
+    display:inline-flex;
+  }
+  body.fullscreen .hud .badge[data-role="score"]{
+    font-size:18px;
+  }
+  body.fullscreen .dpad{
+    position:fixed;
+    left:50%;
+    bottom:18px;
+    transform:translateX(-50%);
+    display:flex;
+  }
+  body.fullscreen .wrap{
+    align-items:center;
+  }
+
   .muted{opacity:.7}
   .hint{opacity:.7;font-size:12px}
 
@@ -136,11 +184,12 @@
     <div class="sub">Plynulé neonové animace, částice a hezky „křupe“ do uší.</div>
 
     <div class="hud">
-      <div class="badge"><span class="dot score"></span>Skóre: <span id="score">0</span></div>
-      <div class="badge"><span class="dot best"></span>Nejlepší: <span id="best">0</span></div>
+      <div class="badge" data-role="score"><span class="dot score"></span>Skóre: <span id="score">0</span></div>
+      <div class="badge" data-role="best"><span class="dot best"></span>Nejlepší: <span id="best">0</span></div>
       <button id="toggleSound" class="btn">🔊 Zvuk</button>
       <button id="pauseBtn" class="btn ghost">⏸ Pauza (P)</button>
       <button id="restartBtn" class="btn ghost">↻ Restart (R)</button>
+      <button id="fullscreenBtn" class="btn ghost">⛶ Celá obrazovka</button>
     </div>
 
     <div class="stage-wrap">
@@ -194,6 +243,7 @@
   const pauseBtn = document.getElementById('pauseBtn');
   const restartBtn = document.getElementById('restartBtn');
   const toggleSoundBtn = document.getElementById('toggleSound');
+  const fullscreenBtn = document.getElementById('fullscreenBtn');
 
   // --- Nastavení hry ---
   const GRID = 28;                  // počet buněk na řádku/sloupci (560 / 28 = 20px buňka)
@@ -297,6 +347,10 @@
     const head = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
     snake.unshift(head);
 
+    // kolize
+    if(head.x<0||head.y<0||head.x>=GRID||head.y>=GRID) return gameOver();
+    for(let i=1;i<snake.length;i++){ if(snake[i].x===head.x && snake[i].y===head.y) return gameOver(); }
+
     // jídlo
     if(head.x===food.x && head.y===food.y){
       score++; scoreEl.textContent = score; bumpBadge(scoreBadge);
@@ -320,9 +374,6 @@
       });
     }
 
-    // kolize
-    if(head.x<0||head.y<0||head.x>=GRID||head.y>=GRID) return gameOver();
-    for(let i=1;i<snake.length;i++){ if(snake[i].x===head.x && snake[i].y===head.y) return gameOver(); }
   }
 
   // kreslení s „tween“ posunem pro plynulost
@@ -526,6 +577,14 @@
     soundOn = !soundOn;
     toggleSoundBtn.textContent = soundOn ? '🔊 Zvuk' : '🔇 Bez zvuku';
   };
+  if(fullscreenBtn){
+    fullscreenBtn.onclick = ()=>{
+      const next = !document.body.classList.contains('fullscreen');
+      document.body.classList.toggle('fullscreen', next);
+      fullscreenBtn.textContent = next ? '✕ Zavřít' : '⛶ Celá obrazovka';
+      if(next){ window.scrollTo({top:0, left:0}); }
+    };
+  }
 
   // inicializace
   best = Number(localStorage.getItem('neon-snake-best')||0);
