@@ -57,12 +57,16 @@
   }
 
   .stage-wrap{
+    --canvas-size:min(92vw, 560px);
     position:relative; border-radius:20px; padding:14px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
     box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.05);
     margin:14px 0;
   }
   canvas{
-    display:block;background: #0b0f18; border-radius:16px; width:min(92vw,560px); height:auto;
+    display:block;background: #0b0f18; border-radius:16px;
+    width:var(--canvas-size);
+    height:var(--canvas-size);
+    max-width:100%; max-height:100%;
     box-shadow: inset 0 0 70px rgba(0,255,225,.06), inset 0 0 140px rgba(108,255,77,.05), 0 0 0 10px rgba(0,0,0,.2);
     image-rendering: crisp-edges; image-rendering: pixelated;
     touch-action:none;
@@ -93,8 +97,11 @@
 
   /* mobilní šipky */
   .dpad{
-    display:none; position: fixed; bottom:20px; right:20px; gap:10px; flex-direction:column; align-items:center;
-    z-index:10;
+    display:none;
+    gap:10px;
+    flex-direction:column;
+    align-items:center;
+    margin-top:18px;
   }
   .drow{display:flex;gap:10px}
   .dkey{
@@ -114,7 +121,7 @@
   }
   body.fullscreen .wrap{
     min-height:100dvh;
-    padding:16px 16px 90px;
+    padding:16px;
     justify-content:center;
   }
   body.fullscreen h1,
@@ -147,11 +154,7 @@
     font-size:18px;
   }
   body.fullscreen .dpad{
-    position:fixed;
-    left:50%;
-    bottom:18px;
-    transform:translateX(-50%);
-    display:flex;
+    align-self:center;
   }
   body.fullscreen .wrap{
     align-items:center;
@@ -218,19 +221,21 @@
       </div>
     </div>
 
-    <div class="hint">© Udělané pro radost – žádné frameworky, jen čisté Canvas API.</div>
-  </div>
+    <!-- Mobilní D-Pad -->
+    <div class="dpad" id="dpad">
+      <div class="drow"><div></div><div class="dkey" data-dir="up">▲</div><div></div></div>
+      <div class="drow"><div class="dkey" data-dir="left">◀</div><div class="dkey" data-dir="down">▼</div><div class="dkey" data-dir="right">▶</div></div>
+    </div>
 
-  <!-- Mobilní D-Pad -->
-  <div class="dpad" id="dpad">
-    <div class="drow"><div></div><div class="dkey" data-dir="up">▲</div><div></div></div>
-    <div class="drow"><div class="dkey" data-dir="left">◀</div><div class="dkey" data-dir="down">▼</div><div class="dkey" data-dir="right">▶</div></div>
+    <div class="hint">© Udělané pro radost – žádné frameworky, jen čisté Canvas API.</div>
   </div>
 
 <script>
 (() => {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  const wrapEl = document.querySelector('.wrap');
+  const stageWrapEl = document.querySelector('.stage-wrap');
   const scoreEl = document.getElementById('score');
   const bestEl  = document.getElementById('best');
   const startOverlay = document.getElementById('startOverlay');
@@ -304,6 +309,53 @@
     }
   }
 
+  function updateCanvasSize(){
+    if(!wrapEl || !stageWrapEl) return;
+    const wrapStyles = getComputedStyle(wrapEl);
+    const paddingV = parseFloat(wrapStyles.paddingTop) + parseFloat(wrapStyles.paddingBottom);
+    const paddingH = parseFloat(wrapStyles.paddingLeft) + parseFloat(wrapStyles.paddingRight);
+    const rowGap = parseFloat(wrapStyles.rowGap || wrapStyles.gap || '0') || 0;
+    const stageStyles = getComputedStyle(stageWrapEl);
+    const stageMargin = parseFloat(stageStyles.marginTop) + parseFloat(stageStyles.marginBottom);
+    const stagePadding = parseFloat(stageStyles.paddingTop) + parseFloat(stageStyles.paddingBottom);
+
+    const children = Array.from(wrapEl.children);
+    let otherHeight = paddingV + stageMargin;
+    let prevVisible = null;
+    for(const child of children){
+      if(child.offsetParent === null) continue;
+      if(prevVisible) otherHeight += rowGap;
+      if(child !== stageWrapEl){
+        const style = getComputedStyle(child);
+        const outer = child.offsetHeight + (parseFloat(style.marginTop)||0) + (parseFloat(style.marginBottom)||0);
+        otherHeight += outer;
+      }
+      prevVisible = child;
+    }
+
+    const viewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    const availableHeight = Math.max(0, viewportHeight - otherHeight);
+    const maxCanvasByHeight = Math.max(0, availableHeight - stagePadding);
+    const availableWidth = Math.max(0, wrapEl.clientWidth - paddingH);
+
+    let size = Math.min(560, availableWidth, maxCanvasByHeight);
+    if(!Number.isFinite(size) || size <= 0){
+      const fallbackHeight = maxCanvasByHeight > 0 ? maxCanvasByHeight : 560;
+      const fallbackWidth  = availableWidth > 0 ? availableWidth : 560;
+      size = Math.min(560, fallbackWidth, fallbackHeight);
+    }
+    if(size <= 0) size = 120;
+
+    stageWrapEl.style.setProperty('--canvas-size', `${size}px`);
+  }
+
+  function applyFullscreen(enabled){
+    document.body.classList.toggle('fullscreen', enabled);
+    if(fullscreenBtn){ fullscreenBtn.textContent = enabled ? '✕ Zavřít' : '⛶ Celá obrazovka'; }
+    if(enabled){ window.scrollTo({top:0, left:0}); }
+    requestAnimationFrame(updateCanvasSize);
+  }
+
   function resetGame(){
     snake = [{x: Math.floor(GRID/2), y: Math.floor(GRID/2)}];
     dir = {x:0,y:0};
@@ -314,18 +366,22 @@
     lastTick = 0; accMs = 0;
     pauseBtn.textContent = '⏸ Pauza (P)';
     document.body.classList.remove('playing');
+    applyFullscreen(false);
     startOverlay.classList.add('active');
     gameOverOverlay.classList.remove('active');
+    requestAnimationFrame(updateCanvasSize);
   }
 
   function startGame(){
     playing = true; paused = false;
     document.body.classList.add('playing');
+    applyFullscreen(true);
     startOverlay.classList.remove('active');
     gameOverOverlay.classList.remove('active');
     // rozjet směrem doprava, aby to nepůsobilo „mrtvě“
     if(dir.x===0 && dir.y===0){ nextDir = {x:1,y:0}; }
     beep(600,0.05,'triangle',0.04);
+    requestAnimationFrame(updateCanvasSize);
   }
 
   function gameOver(){
@@ -519,9 +575,11 @@
 
   // --- Ovládání ---
   function setDir(nx,ny){
-    // zamezíme otočení o 180°
-    if(snake.length>1 && nx===-dir.x && ny===-dir.y) return;
-    nextDir = {x:nx,y:ny};
+    const candidate = {x:nx,y:ny};
+    if(candidate.x===0 && candidate.y===0) return;
+    if(dir && (dir.x||dir.y) && candidate.x===-dir.x && candidate.y===-dir.y) return;
+    if(nextDir && (nextDir.x||nextDir.y) && candidate.x===-nextDir.x && candidate.y===-nextDir.y) return;
+    nextDir = candidate;
   }
   window.addEventListener('keydown', (e)=>{
     const k = e.key.toLowerCase();
@@ -580,16 +638,18 @@
   if(fullscreenBtn){
     fullscreenBtn.onclick = ()=>{
       const next = !document.body.classList.contains('fullscreen');
-      document.body.classList.toggle('fullscreen', next);
-      fullscreenBtn.textContent = next ? '✕ Zavřít' : '⛶ Celá obrazovka';
-      if(next){ window.scrollTo({top:0, left:0}); }
+      applyFullscreen(next);
     };
   }
+
+  window.addEventListener('resize', updateCanvasSize);
+  window.addEventListener('orientationchange', updateCanvasSize);
 
   // inicializace
   best = Number(localStorage.getItem('neon-snake-best')||0);
   bestEl.textContent = best;
   resetGame();
+  updateCanvasSize();
   requestAnimationFrame(loop);
 })();
 </script>
