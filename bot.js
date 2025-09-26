@@ -156,7 +156,18 @@ class SnakeBot {
     this.lastBodyLength = state.body.length;
     this.updateCurrentDir(state);
 
-    if (this.shouldAvoidWall(state)) {
+    const distToWall = this.distanceToWall(state.head, this.currentDir);
+    if (distToWall <= 1) {
+      if (this.commandPending) {
+        this.commandPending = false;
+        this.expectedHead = null;
+      }
+      const turnPrefs = this.turnPreferences();
+      const turnDir = this.chooseSafeDirection(state, turnPrefs);
+      if (turnDir) {
+        this.plan = [turnDir];
+      }
+    } else if (this.shouldAvoidWall(state)) {
       if (this.commandPending) {
         this.commandPending = false;
         this.expectedHead = null;
@@ -692,6 +703,53 @@ class SnakeBot {
 
     const preferred = desired ? this.perpendicularDirs(desired) : this.perpendicularDirs();
     return this.chooseSafeDirection(state, preferred);
+  }
+
+  distanceToWall(head, dir) {
+    if (!dir) return Infinity;
+    const dx = dir.dx !== undefined ? dir.dx : dir.x || 0;
+    const dy = dir.dy !== undefined ? dir.dy : dir.y || 0;
+    if (dx === 1) return this.grid - 1 - head.x;
+    if (dx === -1) return head.x;
+    if (dy === 1) return this.grid - 1 - head.y;
+    if (dy === -1) return head.y;
+    return Infinity;
+  }
+
+  turnPreferences() {
+    if (!this.currentDir) return DIRS;
+    const left = this.turnLeft(this.currentDir);
+    const right = this.turnRight(this.currentDir);
+    const forward = this.currentDir && DIRS.find((dir) => dir.dx === this.currentDir.x && dir.dy === this.currentDir.y);
+    const prefs = [];
+    if (left) prefs.push(left);
+    if (right) prefs.push(right);
+    if (forward) prefs.push(forward);
+    return prefs.filter(Boolean);
+  }
+
+  turnLeft(dir) {
+    const dx = dir.dx !== undefined ? dir.dx : dir.x || 0;
+    const dy = dir.dy !== undefined ? dir.dy : dir.y || 0;
+    let target = null;
+    if (dx === 1 && dy === 0) target = { dx: 0, dy: -1 };
+    else if (dx === -1 && dy === 0) target = { dx: 0, dy: 1 };
+    else if (dx === 0 && dy === 1) target = { dx: 1, dy: 0 };
+    else if (dx === 0 && dy === -1) target = { dx: -1, dy: 0 };
+    if (!target) return null;
+    return DIRS.find((d) => d.dx === target.dx && d.dy === target.dy) || null;
+  }
+
+  turnRight(dir) {
+    const dx = dir.dx !== undefined ? dir.dx : dir.x || 0;
+    const dy = dir.dy !== undefined ? dir.dy : dir.y || 0;
+    let target = null;
+    if (dx === 1 && dy === 0) target = { dx: 0, dy: 1 };
+    else if (dx === -1 && dy === 0) target = { dx: 0, dy: -1 };
+    else if (dx === 0 && dy === 1) target = { dx: -1, dy: 0 };
+    else if (dx === 0 && dy === -1) target = { dx: 1, dy: 0 };
+    if (!target) return null;
+    return DIRS.find((d) => d.dx === target.dx && d.dy === target.dy) || null;
   }
 }
 
