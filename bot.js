@@ -156,12 +156,15 @@ class SnakeBot {
     this.lastBodyLength = state.body.length;
     this.updateCurrentDir(state);
 
-    if ((!this.plan || this.plan.length === 0) && this.shouldAvoidWall(state)) {
+    if (this.shouldAvoidWall(state)) {
+      if (this.commandPending) {
+        this.commandPending = false;
+        this.expectedHead = null;
+      }
       const preferredTurns = this.perpendicularDirs();
       const emergencyTurn = this.chooseSafeDirection(state, preferredTurns);
       if (emergencyTurn) {
         this.plan = [emergencyTurn];
-        this.commandPending = false;
       }
     }
 
@@ -187,7 +190,8 @@ class SnakeBot {
     }
 
     if (!this.commandPending) {
-      const nextDir = this.plan.shift();
+      const desired = this.plan.shift();
+      const nextDir = this.pickSafeDirection(state, desired);
       if (nextDir) {
         const dispatched = this.sendDirection(nextDir);
         if (dispatched) {
@@ -211,6 +215,7 @@ class SnakeBot {
       bubbles: true
     });
     this.win.dispatchEvent(event);
+    this.currentDir = { x: dir.dx, y: dir.dy };
     return true;
   }
 
@@ -227,21 +232,25 @@ class SnakeBot {
     }
   }
 
-  shouldAvoidWall(state) {
-    if (!this.currentDir) return false;
+  shouldAvoidWall(state, dir = this.currentDir) {
+    if (!dir) return false;
+    const dx = dir.dx !== undefined ? dir.dx : dir.x || 0;
+    const dy = dir.dy !== undefined ? dir.dy : dir.y || 0;
     const next = {
-      x: state.head.x + this.currentDir.x,
-      y: state.head.y + this.currentDir.y
+      x: state.head.x + dx,
+      y: state.head.y + dy
     };
     return !this.isInside(next);
   }
 
-  perpendicularDirs() {
-    if (!this.currentDir) return DIRS;
-    if (this.currentDir.x !== 0) {
+  perpendicularDirs(base = this.currentDir) {
+    if (!base) return DIRS;
+    const dx = base.dx !== undefined ? base.dx : base.x || 0;
+    const dy = base.dy !== undefined ? base.dy : base.y || 0;
+    if (dx !== 0) {
       return DIRS.filter((dir) => dir.dx === 0);
     }
-    if (this.currentDir.y !== 0) {
+    if (dy !== 0) {
       return DIRS.filter((dir) => dir.dy === 0);
     }
     return DIRS;
@@ -641,7 +650,7 @@ class SnakeBot {
     return pos.x >= 0 && pos.y >= 0 && pos.x < this.grid && pos.y < this.grid;
   }
 
-  chooseSafeDirection(state, preferred=[]) {
+  chooseSafeDirection(state, preferred = []) {
     const seen = new Set();
     const order = [];
     for (const dir of preferred) {
@@ -669,6 +678,20 @@ class SnakeBot {
       if (!collision) return dir;
     }
     return null;
+  }
+
+  pickSafeDirection(state, desired) {
+    if (desired && !this.shouldAvoidWall(state, desired)) {
+      const nx = state.head.x + desired.dx;
+      const ny = state.head.y + desired.dy;
+      const collision = state.body.slice(0, state.body.length - 1).some((seg) => seg.x === nx && seg.y === ny);
+      if (!collision) {
+        return desired;
+      }
+    }
+
+    const preferred = desired ? this.perpendicularDirs(desired) : this.perpendicularDirs();
+    return this.chooseSafeDirection(state, preferred);
   }
 }
 
