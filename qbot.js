@@ -426,12 +426,18 @@ class SnakeQLearner {
       if (this.autoSaveInterval && (this.completedEpisodes % this.autoSaveInterval === 0)) {
         try {
           this.agent.save();
+          console.info(`[snakeQ] Auto-saved after ${this.completedEpisodes} episodes`);
         } catch (err) {
           console.warn('[SnakeQLearner] auto-save failed', err);
         }
       }
       if (this.completedEpisodes >= this.targetEpisodes) {
-        this.agent.save();
+        try {
+          this.agent.save();
+          console.info('[snakeQ] Final save completed');
+        } catch (err) {
+          console.warn('[SnakeQLearner] final save failed', err);
+        }
         this.stop();
       } else {
         this.agent.decayEpsilon(this.epsilonMin, this.epsilonDecay);
