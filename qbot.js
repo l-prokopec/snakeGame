@@ -400,7 +400,7 @@ class SnakeQLearner {
 
     if (this.mode === 'train') {
       this.episodeScores.push(episodeScore);
-      const windowSize = 10;
+      const windowSize = 50;
       this.scoreWindow.push(episodeScore);
       if (this.scoreWindow.length > windowSize) {
         this.scoreWindow.shift();
@@ -413,7 +413,7 @@ class SnakeQLearner {
         }
         const formattedAvg = avg.toFixed(2);
         const formattedDelta = deltaPct == null ? '' : ` (${deltaPct >= 0 ? '+' : ''}${deltaPct.toFixed(1)}%)`;
-        const start = this.completedEpisodes - windowSize + 1;
+        const start = Math.max(1, this.completedEpisodes - windowSize + 1);
         const end = this.completedEpisodes;
         console.info(`[snakeQ] Episodes ${start}-${end}: ${formattedAvg}${formattedDelta}`);
         this.lastWindowAverage = avg;
