@@ -256,11 +256,6 @@
   const STEP_MS = 85;               // herní tick
   const TWEEN = 0.38;               // vizuální posuv mezi ticky pro plynulejší dojem
   const COLORS = ['#00ffe1','#6cff4d','#ffd166','#ff6ad5'];
-  let manualMode = false;
-  let manualRenderEvery = 1;
-  let manualRenderEnabled = true;
-  let manualRenderCounter = 0;
-  let rafId = null;
 
   let snake, dir, nextDir, food, score, best, particles, pulse, playing, paused, lastTick, accMs, trail;
 
@@ -566,10 +561,6 @@
 
   // hlavní smyčka (časovač + interpolace vykreslení)
   function loop(ts){
-    if(manualMode){
-      rafId = null;
-      return;
-    }
     if(!lastTick) lastTick = ts;
     const dt = ts - lastTick;
     lastTick = ts;
@@ -584,7 +575,7 @@
     }
     const alpha = Math.min(1, accMs/STEP_MS);
     draw(alpha);
-    rafId = requestAnimationFrame(loop);
+    requestAnimationFrame(loop);
   }
 
   // --- Ovládání ---
@@ -595,81 +586,6 @@
     if(nextDir && (nextDir.x||nextDir.y) && candidate.x===-nextDir.x && candidate.y===-nextDir.y) return;
     nextDir = candidate;
   }
-
-  function setManualMode(enabled, opts={}){
-    const next = !!enabled;
-    if(next === manualMode){
-      manualRenderEnabled = opts.render !== false;
-      manualRenderEvery = Math.max(1, opts.renderEvery||manualRenderEvery);
-      manualRenderCounter = 0;
-      return;
-    }
-    manualMode = next;
-    manualRenderEnabled = opts.render !== false;
-    manualRenderEvery = Math.max(1, opts.renderEvery||1);
-    manualRenderCounter = 0;
-    lastTick = 0;
-    accMs = 0;
-    if(manualMode){
-      if(rafId){ cancelAnimationFrame(rafId); rafId = null; }
-    } else {
-      if(!rafId) rafId = requestAnimationFrame(loop);
-    }
-  }
-
-  function manualStep(count=1, opts={}){
-    if(!manualMode) return;
-    const steps = Math.max(1, count|0);
-    const shouldRender = opts.render !== undefined ? opts.render : manualRenderEnabled;
-    const renderEvery = Math.max(1, opts.renderEvery||manualRenderEvery);
-    for(let i=0;i<steps;i++){
-      if(playing && !paused){
-        tick();
-      }
-      manualRenderCounter++;
-      if(shouldRender && (manualRenderCounter % renderEvery===0 || !playing)){
-        draw(1);
-      }
-      if(!playing) break;
-    }
-  }
-
-  function manualDraw(alpha=1){
-    draw(alpha);
-  }
-
-  function getSnapshot(){
-    return {
-      playing,
-      paused,
-      score,
-      best,
-      snake: snake.map(seg=>({...seg})),
-      food: food ? {...food} : null
-    };
-  }
-
-  const neonSnakeApi = {
-    setManualMode,
-    manualStep,
-    manualDraw,
-    setDirection: setDir,
-    reset: resetGame,
-    start: startGame,
-    isPlaying: ()=>playing,
-    isPaused: ()=>paused,
-    getSnapshot,
-    toggleSound: (enabled)=>{
-      soundOn = !!enabled;
-      if(toggleSoundBtn){ toggleSoundBtn.textContent = soundOn ? '🔊 Zvuk' : '🔇 Bez zvuku'; }
-    }
-  };
-
-  Object.defineProperty(window, 'neonSnake', {
-    value: neonSnakeApi,
-    writable: false,
-    configurable: false
-  });
   window.addEventListener('keydown', (e)=>{
     const k = e.key.toLowerCase();
     if(k==='arrowup'||k==='w') setDir(0,-1);
@@ -739,7 +655,7 @@
   bestEl.textContent = best;
   resetGame();
   updateCanvasSize();
-  rafId = requestAnimationFrame(loop);
+  requestAnimationFrame(loop);
 })();
 </script>
 </body>

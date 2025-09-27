@@ -138,9 +138,6 @@ class SnakeQLearner {
     this.targetEpisodes = 0;
     this.epsilonMin = EPSILON_MIN_DEFAULT;
     this.epsilonDecay = EPSILON_DECAY_DEFAULT;
-    this.gameApi = typeof window !== 'undefined' ? window.neonSnake || null : null;
-    this.manualModeActive = false;
-    this.fastIterations = 1;
 
     this.loop = this.loop.bind(this);
     this.ensureGameHandlers();
@@ -189,26 +186,6 @@ class SnakeQLearner {
     this.resetEpisodeStats();
   }
 
-  enableManualMode({ fastIterations = 200, renderEvery = 1 } = {}) {
-    if (!this.gameApi || typeof this.gameApi.setManualMode !== 'function' || typeof this.gameApi.manualStep !== 'function') {
-      return false;
-    }
-    this.gameApi.toggleSound?.(false);
-    this.gameApi.setManualMode(true, { render: true, renderEvery });
-    this.manualModeActive = true;
-    this.fastIterations = Math.max(2, fastIterations);
-    return true;
-  }
-
-  disableManualMode() {
-    if (this.manualModeActive && this.gameApi && typeof this.gameApi.setManualMode === 'function') {
-      this.gameApi.setManualMode(false);
-      this.gameApi.toggleSound?.(true);
-    }
-    this.manualModeActive = false;
-    this.fastIterations = 1;
-  }
-
   startLoop() {
     if (this.running) return;
     this.running = true;
@@ -237,9 +214,7 @@ class SnakeQLearner {
     alphaDecay = ALPHA_DECAY_DEFAULT,
     stepPenalty = STEP_PENALTY_TRAIN,
     noProgressLimit = NO_PROGRESS_LIMIT_DEFAULT,
-    stallPenalty = STALL_PENALTY_DEFAULT,
-    fastIterations = 200,
-    renderEvery = 1
+    stallPenalty = STALL_PENALTY_DEFAULT
   } = {}) {
     this.mode = 'train';
     this.targetEpisodes = episodes;
@@ -253,11 +228,6 @@ class SnakeQLearner {
     this.noProgressLimit = noProgressLimit;
     this.stallPenalty = stallPenalty;
     this.resetEpisodeStats();
-    const manualEnabled = this.enableManualMode({ fastIterations, renderEvery });
-    if (!manualEnabled) {
-      this.manualModeActive = false;
-      this.fastIterations = 1;
-    }
     this.episodeScores = [];
     this.scoreWindow = [];
     this.lastWindowAverage = null;
@@ -277,7 +247,6 @@ class SnakeQLearner {
 
   async play({ epsilon = 0.02 } = {}) {
     this.mode = 'play';
-    this.disableManualMode();
     this.agent.epsilon = epsilon;
     this.stepPenalty = STEP_PENALTY_PLAY;
     this.noProgressLimit = Infinity;
@@ -291,25 +260,13 @@ class SnakeQLearner {
     this.mode = 'idle';
     this.stepPenalty = STEP_PENALTY_PLAY;
     this.stopLoop();
-    this.disableManualMode();
   }
 
   loop() {
     if (!this.running) return;
 
     try {
-      const iterations = (this.manualModeActive && this.mode === 'train') ? this.fastIterations : 1;
-      for (let i = 0; i < iterations && this.running; i++) {
-        this.update();
-        if (!this.running || this.mode !== 'train') break;
-        if (!this.manualModeActive) break;
-        if (this.gameApi && typeof this.gameApi.manualStep === 'function') {
-          if (!this.gameApi.isPlaying || this.gameApi.isPlaying()) {
-            this.gameApi.manualStep(1, { render: true });
-          }
-        }
-        if (!this.running || this.mode !== 'train') break;
-      }
+      this.update();
     } catch (err) {
       console.error('[SnakeQLearner] stopped due to error', err);
       this.stop();
