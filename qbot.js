@@ -138,6 +138,7 @@ class SnakeQLearner {
     this.targetEpisodes = 0;
     this.epsilonMin = EPSILON_MIN_DEFAULT;
     this.epsilonDecay = EPSILON_DECAY_DEFAULT;
+    this.autoSaveInterval = 100;
 
     this.loop = this.loop.bind(this);
     this.ensureGameHandlers();
@@ -422,6 +423,13 @@ class SnakeQLearner {
 
     this.completedEpisodes += 1;
     if (this.mode === 'train') {
+      if (this.autoSaveInterval && (this.completedEpisodes % this.autoSaveInterval === 0)) {
+        try {
+          this.agent.save();
+        } catch (err) {
+          console.warn('[SnakeQLearner] auto-save failed', err);
+        }
+      }
       if (this.completedEpisodes >= this.targetEpisodes) {
         this.agent.save();
         this.stop();
